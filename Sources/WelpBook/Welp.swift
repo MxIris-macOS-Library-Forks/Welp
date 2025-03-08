@@ -4,7 +4,7 @@ public struct Help {
 	/// An item returned to the help system.
 	///
 	/// This value is unchecked because even though it passes through concurrency domains, we know that `action` will only ever actually be accessed from the MainActor.
-	public struct Item: @unchecked Sendable {
+	public struct Item: Sendable {
 		public typealias Action = @MainActor () -> Void
 
 		public let localizedTitles: [String]
@@ -77,7 +77,15 @@ final class InterfaceSearcher: NSObject {
 	}
 }
 
+#if compiler(>=6.0)
+extension InterfaceSearcher: @preconcurrency NSUserInterfaceItemSearching {
+}
+#else
 extension InterfaceSearcher: NSUserInterfaceItemSearching {
+}
+#endif
+
+extension InterfaceSearcher {
 	nonisolated func searchForItems(withSearch searchString: String, resultLimit: Int, matchedItemHandler handleMatchedItems: @escaping ([Any]) -> Void) {
 		// by my reading of the documentation, `matchedItemHandler` is actually sendable but is not correctly annotated
 		let sendableMatchHandler = unsafeBitCast(handleMatchedItems, to: (@Sendable ([Any]) -> Void).self)
@@ -107,12 +115,7 @@ extension InterfaceSearcher: NSUserInterfaceItemSearching {
 		return item.localizedTitles
 	}
 
-	// Both of these actually are isolated to the MainActor, they are just not well-annotated
 	func performAction(forItem item: Any) {
-		if #available(macOS 14.0, *) {
-			MainActor.preconditionIsolated()
-		}
-
 		guard let item = item as? Help.Item else {
 			print("unexpected value returned in NSUserInterfaceItemSearching \(item)")
 			return
@@ -122,10 +125,6 @@ extension InterfaceSearcher: NSUserInterfaceItemSearching {
 	}
 
 	func showAllHelpTopics(forSearch searchString: String) {
-		if #available(macOS 14.0, *) {
-			MainActor.preconditionIsolated()
-		}
-
 		self.handlers.allTopics(searchString)
 	}
 }
